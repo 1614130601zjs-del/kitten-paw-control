@@ -1,6 +1,6 @@
 """
 小猫爪 MCP 控制服务器 - 自定义 HTTP 端点 (/mcp)
-无需 session ID，兼容所有普通 HTTP 客户端
+支持 initialize 握手
 """
 import json
 import os
@@ -8,17 +8,13 @@ import httpx
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Route   # 👈 新增导入
+from starlette.routing import Route
 import uvicorn
 
-# ========== 配置 ==========
 ACCOUNT_ID = os.environ.get("CACHITO_ACCOUNT_ID", "你的账号ID")
 DEVICE_ID = 13
-
-# 全局变量存储邀请码
 code = None
 
-# ========== 工具函数 ==========
 def calc_hex(intensity: int) -> str:
     val = round(intensity * 0.75 + 25)
     return format(min(max(val, 0), 255), '02x')
@@ -74,7 +70,6 @@ async def toy_control(action: str, intensity: int = 30, duration: int = 3000) ->
 async def toy_state() -> str:
     return f"邀请码: {code or '未设置'}"
 
-# ========== JSON-RPC 处理 ==========
 async def handle_rpc(request: Request):
     try:
         body = await request.json()
@@ -83,9 +78,31 @@ async def handle_rpc(request: Request):
 
     method = body.get("method")
     params = body.get("params", {})
-    req_id = body.get("id")
+    req_id = body.get("id")   # 可能为 None（通知）
 
-    # 处理 tools/list
+    # ---------- 处理 initialize（必须） ----------
+    if method == "initialize":
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": "0.1.0",
+                "serverInfo": {
+                    "name": "Kitten Paw Control",
+                    "version": "1.0.0"
+                },
+                "capabilities": {
+                    "tools": {}
+                }
+            }
+        })
+
+    # ---------- 处理 notifications/initialized（无需响应） ----------
+    if method == "notifications/initialized":
+        # 通知不需要id，返回空响应
+        return JSONResponse({}, status_code=200)
+
+    # ---------- 处理 tools/list ----------
     if method == "tools/list":
         tools = [
             {
@@ -120,8 +137,8 @@ async def handle_rpc(request: Request):
         ]
         return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}})
 
-    # 处理 tools/call
-    elif method == "tools/call":
+    # ---------- 处理 tools/call ----------
+    if method == "tools/call":
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
         if tool_name == "toy_join":
@@ -144,13 +161,12 @@ async def handle_rpc(request: Request):
         else:
             return JSONResponse({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "Tool not found"}})
 
-    else:
-        return JSONResponse({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "Method not found"}})
+    # ---------- 其他方法一律返回 Method not found ----------
+    return JSONResponse({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "Method not found"}})
 
-# ========== 启动服务 ==========
 app = Starlette(routes=[
-    Route("/mcp", handle_rpc, methods=["POST"]),   # 👈 使用 Route
-    Route("/", lambda r: JSONResponse({"status": "ok"}), methods=["GET"])  # 健康检查
+    Route("/mcp", handle_rpc, methods=["POST"]),
+    Route("/", lambda r: JSONResponse({"status": "ok"}), methods=["GET"])
 ])
 
 if __name__ == "__main__":
