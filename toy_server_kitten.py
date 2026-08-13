@@ -1,3 +1,14 @@
+async def handle_rpc(request: Request):
+    # ===== 打印原始请求 =====
+    raw_body = await request.body()
+    print(f"[DEBUG] Received: {raw_body.decode()}")
+    # =======================
+    try:
+        body = await request.json()
+    except:
+        return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
+
+    # ... 后面代码不变 ...
 """
 小猫爪 MCP 控制服务器 - 自定义 HTTP 端点 (/mcp)
 支持 initialize 握手
