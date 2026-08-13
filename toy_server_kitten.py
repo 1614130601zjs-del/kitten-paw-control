@@ -8,6 +8,7 @@ import httpx
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.routing import Route   # 👈 新增导入
 import uvicorn
 
 # ========== 配置 ==========
@@ -148,8 +149,8 @@ async def handle_rpc(request: Request):
 
 # ========== 启动服务 ==========
 app = Starlette(routes=[
-    ("/mcp", handle_rpc, ["POST"]),
-    ("/", lambda r: JSONResponse({"status": "ok"}), ["GET"])  # 健康检查
+    Route("/mcp", handle_rpc, methods=["POST"]),   # 👈 使用 Route
+    Route("/", lambda r: JSONResponse({"status": "ok"}), methods=["GET"])  # 健康检查
 ])
 
 if __name__ == "__main__":
