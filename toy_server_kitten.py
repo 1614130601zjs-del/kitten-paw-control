@@ -1,5 +1,5 @@
 """
-小猫爪 MCP 控制服务器 - Render 部署专用 (端点: /sse)
+小猫爪 MCP 控制服务器 - Render 部署专用 (端点: /mcp)
 """
 import json
 import os
@@ -72,4 +72,5 @@ async def toy_state() -> str:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8001))
-    mcp.run(transport="sse", host="0.0.0.0", port=port)
+    # ✅ 使用 streamable-http，端点自动为 /mcp
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
