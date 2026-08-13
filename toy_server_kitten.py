@@ -4,7 +4,7 @@
 import json
 import os
 import httpx
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP   # 👈 改这里
 
 ACCOUNT_ID = os.environ.get("CACHITO_ACCOUNT_ID", "你的账号ID")
 DEVICE_ID = 13
@@ -72,5 +72,6 @@ async def toy_state() -> str:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8001))
-    # ✅ 使用 streamable-http，端点自动为 /mcp
+    # fastmcp 支持 transport="sse" 或 "streamable-http"
+    # 如果你客户端要求 /mcp 端点，使用 streamable-http
     mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
