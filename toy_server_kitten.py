@@ -1,12 +1,10 @@
-
-    
-    """
-小猫爪 MCP 控制服务器 - Render 部署专用 (Streamable HTTP 端点: /mcp)
+"""
+小猫爪 MCP 控制服务器 - Render 部署专用 (端点: /sse)
 """
 import json
 import os
 import httpx
-from mcp.server.fastmcp import FastMCP  # 使用官方 mcp 包
+from mcp.server.fastmcp import FastMCP
 
 ACCOUNT_ID = os.environ.get("CACHITO_ACCOUNT_ID", "你的账号ID")
 DEVICE_ID = 13
@@ -74,5 +72,4 @@ async def toy_state() -> str:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8001))
-    # 用 SSE 传输（兼容 Claude 桌面版），端点自动为 /sse
     mcp.run(transport="sse", host="0.0.0.0", port=port)
