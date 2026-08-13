@@ -2,9 +2,9 @@ services:
   - type: web
     name: kitten-paw-control
     runtime: python
-    plan: free
+    plan: free                 # 👈 允许休眠
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn toy_server_kitten:app --host 0.0.0.0 --port $PORT
+    startCommand: python toy_server_kitten.py
     envVars:
       - key: CACHITO_ACCOUNT_ID
         sync: false
