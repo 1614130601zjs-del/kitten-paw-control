@@ -1,22 +1,27 @@
 """
-小猫爪 MCP 控制服务器 - Render 部署专用 (端点: /mcp)
+小猫爪 MCP 控制服务器 - 自定义 HTTP 端点 (/mcp)
+无需 session ID，兼容所有普通 HTTP 客户端
 """
 import json
 import os
 import httpx
-from fastmcp import FastMCP   # 👈 改这里
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+import uvicorn
 
+# ========== 配置 ==========
 ACCOUNT_ID = os.environ.get("CACHITO_ACCOUNT_ID", "你的账号ID")
 DEVICE_ID = 13
 
-mcp = FastMCP("Kitten Paw Control", version="1.0.0")
+# 全局变量存储邀请码
 code = None
 
+# ========== 工具函数 ==========
 def calc_hex(intensity: int) -> str:
     val = round(intensity * 0.75 + 25)
     return format(min(max(val, 0), 255), '02x')
 
-@mcp.tool()
 async def toy_join(invite_code: str) -> str:
     global code
     async with httpx.AsyncClient() as client:
@@ -30,7 +35,6 @@ async def toy_join(invite_code: str) -> str:
         return "加入成功！邀请码已就绪。"
     return f"加入失败: {result.get('message')}。请重新生成邀请码。"
 
-@mcp.tool()
 async def toy_control(action: str, intensity: int = 30, duration: int = 3000) -> str:
     global code
     if not code:
@@ -66,12 +70,88 @@ async def toy_control(action: str, intensity: int = 30, duration: int = 3000) ->
         return f"震动 强度{intensity}%，持续{duration/1000}秒 ✓"
     return f"指令失败: {result.get('message')}"
 
-@mcp.tool()
 async def toy_state() -> str:
     return f"邀请码: {code or '未设置'}"
 
+# ========== JSON-RPC 处理 ==========
+async def handle_rpc(request: Request):
+    try:
+        body = await request.json()
+    except:
+        return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
+
+    method = body.get("method")
+    params = body.get("params", {})
+    req_id = body.get("id")
+
+    # 处理 tools/list
+    if method == "tools/list":
+        tools = [
+            {
+                "name": "toy_join",
+                "description": "加入远程控制。参数: invite_code (字符串)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "invite_code": {"type": "string", "description": "6位邀请码"}
+                    },
+                    "required": ["invite_code"]
+                }
+            },
+            {
+                "name": "toy_control",
+                "description": "控制小猫爪。action: 'vibrate' 或 'stop'，intensity 0-100，duration 毫秒",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string", "enum": ["vibrate", "stop"]},
+                        "intensity": {"type": "integer", "default": 30},
+                        "duration": {"type": "integer", "default": 3000}
+                    },
+                    "required": ["action"]
+                }
+            },
+            {
+                "name": "toy_state",
+                "description": "查看当前连接状态",
+                "inputSchema": {"type": "object", "properties": {}}
+            }
+        ]
+        return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}})
+
+    # 处理 tools/call
+    elif method == "tools/call":
+        tool_name = params.get("name")
+        arguments = params.get("arguments", {})
+        if tool_name == "toy_join":
+            invite_code = arguments.get("invite_code")
+            if not invite_code:
+                return JSONResponse({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "Missing invite_code"}})
+            result = await toy_join(invite_code)
+            return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {"content": [{"type": "text", "text": result}]}})
+        elif tool_name == "toy_control":
+            action = arguments.get("action")
+            intensity = arguments.get("intensity", 30)
+            duration = arguments.get("duration", 3000)
+            if action not in ["vibrate", "stop"]:
+                return JSONResponse({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "Invalid action"}})
+            result = await toy_control(action, intensity, duration)
+            return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {"content": [{"type": "text", "text": result}]}})
+        elif tool_name == "toy_state":
+            result = await toy_state()
+            return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {"content": [{"type": "text", "text": result}]}})
+        else:
+            return JSONResponse({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "Tool not found"}})
+
+    else:
+        return JSONResponse({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "Method not found"}})
+
+# ========== 启动服务 ==========
+app = Starlette(routes=[
+    ("/mcp", handle_rpc, ["POST"]),
+    ("/", lambda r: JSONResponse({"status": "ok"}), ["GET"])  # 健康检查
+])
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8001))
-    # fastmcp 支持 transport="sse" 或 "streamable-http"
-    # 如果你客户端要求 /mcp 端点，使用 streamable-http
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)
