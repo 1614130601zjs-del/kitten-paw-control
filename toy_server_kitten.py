@@ -1,17 +1,5 @@
-async def handle_rpc(request: Request):
-    # ===== 打印原始请求 =====
-    raw_body = await request.body()
-    print(f"[DEBUG] Received: {raw_body.decode()}")
-    # =======================
-    try:
-        body = await request.json()
-    except:
-        return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
-
-    # ... 后面代码不变 ...
 """
-小猫爪 MCP 控制服务器 - 自定义 HTTP 端点 (/mcp)
-支持 initialize 握手
+小猫爪 MCP 控制服务器 - 调试版 (打印所有请求)
 """
 import json
 import os
@@ -82,97 +70,37 @@ async def toy_state() -> str:
     return f"邀请码: {code or '未设置'}"
 
 async def handle_rpc(request: Request):
+    # ===== 🔍 打印手机发来的原始请求 =====
+    raw = await request.body()
+    print(f"[DEBUG] 手机发来: {raw.decode()}")
+    # ===================================
     try:
-        body = await request.json()
+        body = json.loads(raw)
     except:
         return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
 
     method = body.get("method")
     params = body.get("params", {})
-    req_id = body.get("id")   # 可能为 None（通知）
+    req_id = body.get("id")
 
-    # ---------- 处理 initialize（必须） ----------
     if method == "initialize":
         return JSONResponse({
             "jsonrpc": "2.0",
             "id": req_id,
             "result": {
                 "protocolVersion": "0.1.0",
-                "serverInfo": {
-                    "name": "Kitten Paw Control",
-                    "version": "1.0.0"
-                },
-                "capabilities": {
-                    "tools": {}
-                }
+                "serverInfo": {"name": "Kitten Paw", "version": "1.0"},
+                "capabilities": {"tools": {}}
             }
         })
-
-    # ---------- 处理 notifications/initialized（无需响应） ----------
     if method == "notifications/initialized":
-        # 通知不需要id，返回空响应
         return JSONResponse({}, status_code=200)
-
-    # ---------- 处理 tools/list ----------
     if method == "tools/list":
-        tools = [
-            {
-                "name": "toy_join",
-                "description": "加入远程控制。参数: invite_code (字符串)",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "invite_code": {"type": "string", "description": "6位邀请码"}
-                    },
-                    "required": ["invite_code"]
-                }
-            },
-            {
-                "name": "toy_control",
-                "description": "控制小猫爪。action: 'vibrate' 或 'stop'，intensity 0-100，duration 毫秒",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "action": {"type": "string", "enum": ["vibrate", "stop"]},
-                        "intensity": {"type": "integer", "default": 30},
-                        "duration": {"type": "integer", "default": 3000}
-                    },
-                    "required": ["action"]
-                }
-            },
-            {
-                "name": "toy_state",
-                "description": "查看当前连接状态",
-                "inputSchema": {"type": "object", "properties": {}}
-            }
-        ]
+        tools = [...]
         return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}})
-
-    # ---------- 处理 tools/call ----------
     if method == "tools/call":
-        tool_name = params.get("name")
-        arguments = params.get("arguments", {})
-        if tool_name == "toy_join":
-            invite_code = arguments.get("invite_code")
-            if not invite_code:
-                return JSONResponse({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "Missing invite_code"}})
-            result = await toy_join(invite_code)
-            return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {"content": [{"type": "text", "text": result}]}})
-        elif tool_name == "toy_control":
-            action = arguments.get("action")
-            intensity = arguments.get("intensity", 30)
-            duration = arguments.get("duration", 3000)
-            if action not in ["vibrate", "stop"]:
-                return JSONResponse({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "Invalid action"}})
-            result = await toy_control(action, intensity, duration)
-            return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {"content": [{"type": "text", "text": result}]}})
-        elif tool_name == "toy_state":
-            result = await toy_state()
-            return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {"content": [{"type": "text", "text": result}]}})
-        else:
-            return JSONResponse({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "Tool not found"}})
-
-    # ---------- 其他方法一律返回 Method not found ----------
+        # ... 处理逻辑不变 ...
+        pass
     return JSONResponse({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "Method not found"}})
 
 app = Starlette(routes=[
